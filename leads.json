@@ -1,0 +1,17 @@
+[
+  {
+    "company": "AKAYA",
+    "market": "IRAQ",
+    "stage": "NEGOTIATION",
+    "score": 72,
+    "last_update": "2026-03-29",
+    "next_action": "Request forecast",
+    "status": "⏳ LORO",
+    "email": "test@email.com",
+    "alerts": ["⚠️ Exclusivity risk"],
+    "history": [
+      {"date":"2026-03-20","event":"First contact"},
+      {"date":"2026-03-29","event":"Exclusivity request"}
+    ]
+  }
+]
