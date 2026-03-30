@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const app = express();
 
+// MIDDLEWARE
 app.use(cors());
 app.use(express.json());
 
@@ -26,7 +27,27 @@ app.get("/leads", (req, res) => {
   res.json(leads);
 });
 
-// SEND EMAIL
+// EMAIL GENERATOR
+app.post("/generate-email", (req, res) => {
+  const { company, market, stage, next_action } = req.body;
+
+  let email = `Dear ${company} Team,\n\n`;
+
+  if (stage === "NEGOTIATION") {
+    email += `Following our ongoing discussions regarding the ${market} market, we would like to proceed with the next steps.\n\n`;
+  }
+
+  if (next_action === "Request forecast") {
+    email += `Kindly share your expected forecast volumes and initial order planning, so we can evaluate the structure of our potential cooperation.\n\n`;
+  }
+
+  email += `We remain available to organize a call to align on all operational and regulatory aspects.\n\n`;
+  email += `Best regards,\nSwiss Scientific Lab`;
+
+  res.json({ email });
+});
+
+// SEND EMAIL (opzionale)
 app.post("/send-email", async (req, res) => {
   const { to, subject, body } = req.body;
 
@@ -55,4 +76,8 @@ app.post("/send-email", async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log("Server running on 3000"));
+// START SERVER
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
+});
