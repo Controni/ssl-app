@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
-
+console.log("FORCE DEPLOY");
 const app = express();
 
 // MIDDLEWARE
