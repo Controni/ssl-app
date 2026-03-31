@@ -10,8 +10,65 @@
     "email": "test@email.com",
     "alerts": ["⚠️ Exclusivity risk"],
     "history": [
-      {"date":"2026-03-20","event":"First contact"},
-      {"date":"2026-03-29","event":"Exclusivity request"}
+      {"date": "2026-03-20", "event": "First contact"},
+      {"date": "2026-03-29", "event": "Exclusivity request"}
+    ]
+  },
+  {
+    "company": "Diamond Pharma",
+    "market": "IRAQ",
+    "stage": "FIRST CONTACT",
+    "score": 65,
+    "last_update": "2026-03-28",
+    "next_action": "Send introduction email",
+    "status": "➡️ NOI",
+    "email": "diamond@email.com",
+    "alerts": [],
+    "history": [
+      {"date": "2026-03-28", "event": "Initial contact"}
+    ]
+  },
+  {
+    "company": "MTECH",
+    "market": "IRAQ",
+    "stage": "FOLLOW-UP",
+    "score": 68,
+    "last_update": "2026-03-27",
+    "next_action": "Schedule call",
+    "status": "⏳ LORO",
+    "email": "mtech@email.com",
+    "alerts": ["⚠️ Slow response"],
+    "history": [
+      {"date": "2026-03-25", "event": "Meeting scheduled"},
+      {"date": "2026-03-27", "event": "No reply"}
+    ]
+  },
+  {
+    "company": "Ever True Medical",
+    "market": "KUWAIT",
+    "stage": "NEGOTIATION",
+    "score": 75,
+    "last_update": "2026-03-26",
+    "next_action": "Send price list",
+    "status": "➡️ NOI",
+    "email": "evertrue@email.com",
+    "alerts": [],
+    "history": [
+      {"date": "2026-03-24", "event": "NDA signed"}
+    ]
+  },
+  {
+    "company": "Medcore",
+    "market": "GEORGIA",
+    "stage": "NEGOTIATION",
+    "score": 80,
+    "last_update": "2026-03-30",
+    "next_action": "Review forecast",
+    "status": "⏳ LORO",
+    "email": "medcore@email.com",
+    "alerts": ["⚠️ Pricing pressure"],
+    "history": [
+      {"date": "2026-03-22", "event": "Counteroffer received"}
     ]
   }
 ]
