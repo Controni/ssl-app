@@ -4,16 +4,15 @@ require("dotenv").config();
 
 const app = express();
 
-// ===== MIDDLEWARE =====
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-// ===== ROOT TEST =====
+// ===== ROOT =====
 app.get("/", (req, res) => {
-  res.send("SSL SERVER OK");
+  res.send("SSL ADVANCED SERVER OK");
 });
 
-// ===== LOGIN (semplice) =====
+// ===== LOGIN =====
 app.post("/login", (req, res) => {
   res.json({ success: true });
 });
@@ -25,43 +24,83 @@ app.get("/leads", (req, res) => {
   res.json(leads);
 });
 
-// ===== GENERATE EMAIL =====
+// ===== EMAIL ENGINE =====
 app.post("/generate-email", (req, res) => {
 
-  const { company, market, stage, next_action } = req.body;
+  const { company, market, stage, next_action, alerts, score, status } = req.body;
 
   let email = `Dear ${company} Team,\n\n`;
 
+  // ===== DETERMINE STRATEGY =====
+
+  let tone = "neutral";
+  let urgency = false;
+  let competitive = false;
+
+  if (alerts && alerts.some(a => a.includes("Exclusivity"))) {
+    tone = "negotiation";
+    competitive = true;
+  }
+
+  if (score >= 70) {
+    urgency = true;
+  }
+
+  if (status && status.includes("➡️ NOI")) {
+    urgency = true;
+  }
+
   // ===== NEGOTIATION =====
   if (stage === "NEGOTIATION") {
-    email += `Following our ongoing discussions regarding the ${market} market, we would like to proceed with the next steps.\n\n`;
+
+    email += `Following our recent discussions regarding the ${market} market, we are now moving into the operational phase of partner selection.\n\n`;
 
     if (next_action === "Request forecast") {
-      email += `Kindly share your expected forecast volumes and initial order planning, so we can evaluate the structure of our potential cooperation.\n\n`;
+      email += `To proceed with the evaluation, we kindly ask you to share your expected forecast volumes and initial order planning.\n\n`;
     }
 
-    if (next_action === "Send price list") {
-      email += `We would be pleased to share our pricing structure. Please confirm your expected volumes and positioning so we can align accordingly.\n\n`;
+    email += `This will allow us to assess alignment in terms of capacity allocation, pricing structure, and market positioning.\n\n`;
+
+    if (competitive) {
+      email += `Please note that we are currently evaluating multiple potential partners for this market, and timing will play a key role in defining the final structure.\n\n`;
+    }
+
+    if (urgency) {
+      email += `We would appreciate receiving your feedback in the coming days to proceed efficiently.\n\n`;
     }
   }
 
   // ===== FIRST CONTACT =====
-  if (stage === "FIRST CONTACT") {
+  else if (stage === "FIRST CONTACT") {
+
     email += `It was a pleasure connecting with you.\n\n`;
-    email += `We are a Swiss company specialized in premium aesthetic medical solutions and we are currently expanding in the ${market} market.\n\n`;
-    email += `I would be glad to introduce our portfolio and explore a potential collaboration.\n\n`;
+
+    email += `Swiss Scientific Lab is a Swiss-based company specialized in high-end aesthetic medical solutions, currently expanding into selected strategic markets such as ${market}.\n\n`;
+
+    email += `Given your positioning, we believe there could be strong potential for a structured collaboration.\n\n`;
+
+    email += `I would be glad to present our portfolio and explore how we could build a differentiated positioning together.\n\n`;
   }
 
   // ===== FOLLOW-UP =====
-  if (stage === "FOLLOW-UP") {
+  else if (stage === "FOLLOW-UP") {
+
     email += `I just wanted to follow up regarding our previous communication.\n\n`;
-    email += `Please let me know if you had the opportunity to review the information shared.\n\n`;
+
+    if (urgency) {
+      email += `As we are currently progressing with planning activities, your feedback would be important to align next steps.\n\n`;
+    } else {
+      email += `Please let me know if you had the opportunity to review the information shared.\n\n`;
+    }
   }
 
-  // ===== DEFAULT =====
-  if (email.trim() === `Dear ${company} Team,`) {
-    email += `We would be pleased to explore a potential collaboration with your company.\n\n`;
+  // ===== FALLBACK =====
+  else {
+    email += `We would be pleased to explore a potential collaboration with your company in the ${market} market.\n\n`;
   }
+
+  // ===== CALL TO ACTION =====
+  email += `I remain available for a short call to align on the next steps.\n\n`;
 
   // ===== SIGNATURE =====
   email += `Best regards,\n`;
@@ -80,9 +119,9 @@ app.post("/generate-email", (req, res) => {
   res.json({ email });
 });
 
-// ===== START SERVER =====
+// ===== START =====
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("Advanced server running on port " + PORT);
 });
