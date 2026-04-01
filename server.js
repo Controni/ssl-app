@@ -4,8 +4,14 @@ require("dotenv").config();
 
 const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
+const OpenAI = require("openai");
 
 const app = express();
+
+// ===== OPENAI =====
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 // ===== MIDDLEWARE =====
 app.use(cors({ origin: "*" }));
@@ -13,13 +19,53 @@ app.use(express.json());
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
-  res.send("SSL AUTO CRM ACTIVE");
+  res.send("SSL AI CRM ACTIVE");
 });
 
 // ===== LOGIN =====
 app.post("/login", (req, res) => {
   res.json({ success: true });
 });
+
+// ===== AI ANALYSIS =====
+async function analyzeEmailAI(text){
+
+  try {
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+You are a senior sales strategist for a medical aesthetics company.
+
+Analyze the email and return ONLY JSON:
+
+{
+  "stage": "FIRST CONTACT | NEGOTIATION | FOLLOW-UP",
+  "next_action": "clear next action",
+  "status": "➡️ NOI | ⏳ LORO",
+  "score": number (0-100),
+  "alerts": ["optional risks"]
+}
+`
+        },
+        {
+          role: "user",
+          content: text.substring(0, 2000)
+        }
+      ],
+      temperature: 0.2
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+
+  } catch (e) {
+    console.log("AI ERROR:", e.message);
+    return null;
+  }
+}
 
 // ===== EMAIL GENERATOR =====
 app.post("/generate-email", (req, res) => {
@@ -84,7 +130,7 @@ app.post("/generate-email", (req, res) => {
   res.json({ email });
 });
 
-// ===== AUTO CRM ENGINE =====
+// ===== AUTO CRM =====
 app.get("/auto-leads", async (req, res) => {
 
   const config = {
@@ -106,6 +152,7 @@ app.get("/auto-leads", async (req, res) => {
 
     async function scanBoxes(boxes, path = "") {
       for (let box in boxes) {
+
         let fullName = path ? `${path}${box}` : box;
 
         if (fullName.includes(" - ")) {
@@ -128,39 +175,16 @@ app.get("/auto-leads", async (req, res) => {
             let part = last.parts.find(p => p.which === "");
             let parsed = await simpleParser(part.body);
 
-            let text = (parsed.text || "").toLowerCase();
+            let text = parsed.text || "";
 
-            let stage = "FIRST CONTACT";
-            let next_action = "Send introduction email";
-            let status = "➡️ NOI";
-            let score = 50;
-            let alerts = [];
+            // ===== AI ANALYSIS =====
+            let ai = await analyzeEmailAI(text);
 
-            if (text.includes("price") || text.includes("pricing")) {
-              stage = "NEGOTIATION";
-              next_action = "Send price list";
-              score = 75;
-            }
-
-            if (text.includes("call") || text.includes("meeting")) {
-              stage = "NEGOTIATION";
-              next_action = "Schedule call";
-              score = 80;
-            }
-
-            if (text.includes("thank you") || text.includes("pleasure")) {
-              stage = "FOLLOW-UP";
-              next_action = "Follow-up email";
-              status = "⏳ LORO";
-            }
-
-            if (text.includes("forecast")) {
-              next_action = "Request forecast";
-            }
-
-            if (text.includes("exclusive")) {
-              alerts.push("⚠️ Exclusivity risk");
-            }
+            let stage = ai?.stage || "FIRST CONTACT";
+            let next_action = ai?.next_action || "Send introduction email";
+            let status = ai?.status || "➡️ NOI";
+            let score = ai?.score || 50;
+            let alerts = ai?.alerts || [];
 
             leads.push({
               company,
