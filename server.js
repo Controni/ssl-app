@@ -38,22 +38,34 @@ async function analyzeEmailAI(text){
         {
           role: "system",
           content: `
-You are a senior sales strategist for a medical aesthetics company.
+You are a senior B2B sales strategist for a medical aesthetics company.
 
-Analyze the email and return ONLY JSON:
+Your job is to understand REAL commercial intent from email conversations.
+
+Classification rules:
+
+- NDA, forecast, pricing, registration → NEGOTIATION
+- Active discussion → NEGOTIATION
+- Waiting reply → FOLLOW-UP
+- First intro only → FIRST CONTACT
+
+IMPORTANT:
+Do NOT classify everything as FIRST CONTACT.
+
+Return ONLY JSON:
 
 {
   "stage": "FIRST CONTACT | NEGOTIATION | FOLLOW-UP",
-  "next_action": "clear next action",
+  "next_action": "very specific action",
   "status": "➡️ NOI | ⏳ LORO",
   "score": number (0-100),
-  "alerts": ["optional risks"]
+  "alerts": ["risks if any"]
 }
 `
         },
         {
           role: "user",
-          content: text.substring(0, 2000)
+          content: text
         }
       ],
       temperature: 0.2
@@ -175,10 +187,18 @@ app.get("/auto-leads", async (req, res) => {
             let part = last.parts.find(p => p.which === "");
             let parsed = await simpleParser(part.body);
 
-            let text = parsed.text || "";
+            // ===== FIX CONTEXT AI =====
+            let subject = parsed.subject || "";
+            let body = (parsed.text || "").slice(0, 1500);
 
-            // ===== AI ANALYSIS =====
-            let ai = await analyzeEmailAI(text);
+            let fullContext = `
+SUBJECT: ${subject}
+
+EMAIL:
+${body}
+`;
+
+            let ai = await analyzeEmailAI(fullContext);
 
             let stage = ai?.stage || "FIRST CONTACT";
             let next_action = ai?.next_action || "Send introduction email";
