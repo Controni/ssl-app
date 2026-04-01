@@ -2,8 +2,12 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
+const imaps = require("imap-simple");
+const { simpleParser } = require("mailparser");
+
 const app = express();
 
+// ===== MIDDLEWARE =====
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
@@ -24,35 +28,25 @@ app.get("/leads", (req, res) => {
   res.json(leads);
 });
 
-// ===== EMAIL ENGINE =====
+// ===== EMAIL GENERATOR =====
 app.post("/generate-email", (req, res) => {
 
   const { company, market, stage, next_action, alerts, score, status } = req.body;
 
   let email = `Dear ${company} Team,\n\n`;
 
-  // ===== DETERMINE STRATEGY =====
-
-  let tone = "neutral";
   let urgency = false;
   let competitive = false;
 
   if (alerts && alerts.some(a => a.includes("Exclusivity"))) {
-    tone = "negotiation";
     competitive = true;
   }
 
-  if (score >= 70) {
-    urgency = true;
-  }
+  if (score >= 70) urgency = true;
+  if (status && status.includes("➡️ NOI")) urgency = true;
 
-  if (status && status.includes("➡️ NOI")) {
-    urgency = true;
-  }
-
-  // ===== NEGOTIATION =====
+  // NEGOTIATION
   if (stage === "NEGOTIATION") {
-
     email += `Following our recent discussions regarding the ${market} market, we are now moving into the operational phase of partner selection.\n\n`;
 
     if (next_action === "Request forecast") {
@@ -62,7 +56,7 @@ app.post("/generate-email", (req, res) => {
     email += `This will allow us to assess alignment in terms of capacity allocation, pricing structure, and market positioning.\n\n`;
 
     if (competitive) {
-      email += `Please note that we are currently evaluating multiple potential partners for this market, and timing will play a key role in defining the final structure.\n\n`;
+      email += `Please note that we are currently evaluating multiple potential partners for this market, and timing will be a key factor in defining the final structure.\n\n`;
     }
 
     if (urgency) {
@@ -70,21 +64,16 @@ app.post("/generate-email", (req, res) => {
     }
   }
 
-  // ===== FIRST CONTACT =====
+  // FIRST CONTACT
   else if (stage === "FIRST CONTACT") {
-
     email += `It was a pleasure connecting with you.\n\n`;
-
     email += `Swiss Scientific Lab is a Swiss-based company specialized in high-end aesthetic medical solutions, currently expanding into selected strategic markets such as ${market}.\n\n`;
-
     email += `Given your positioning, we believe there could be strong potential for a structured collaboration.\n\n`;
-
     email += `I would be glad to present our portfolio and explore how we could build a differentiated positioning together.\n\n`;
   }
 
-  // ===== FOLLOW-UP =====
+  // FOLLOW-UP
   else if (stage === "FOLLOW-UP") {
-
     email += `I just wanted to follow up regarding our previous communication.\n\n`;
 
     if (urgency) {
@@ -94,15 +83,14 @@ app.post("/generate-email", (req, res) => {
     }
   }
 
-  // ===== FALLBACK =====
+  // DEFAULT
   else {
     email += `We would be pleased to explore a potential collaboration with your company in the ${market} market.\n\n`;
   }
 
-  // ===== CALL TO ACTION =====
   email += `I remain available for a short call to align on the next steps.\n\n`;
 
-  // ===== SIGNATURE =====
+  // SIGNATURE
   email += `Best regards,\n`;
   email += `Swiss Scientific Lab\n\n`;
   email += `Giancarlo Bonagura\n`;
@@ -119,9 +107,57 @@ app.post("/generate-email", (req, res) => {
   res.json({ email });
 });
 
-// ===== START =====
+// ===== IMAP FETCH EMAILS =====
+app.get("/fetch-emails", async (req, res) => {
+
+  const config = {
+    imap: {
+      user: process.env.EMAIL_USER,
+      password: process.env.EMAIL_PASS,
+      host: "mail.swissscientificlab.ch",
+      port: 993,
+      tls: true,
+      authTimeout: 5000
+    }
+  };
+
+  try {
+    const connection = await imaps.connect(config);
+    await connection.openBox("INBOX");
+
+    const searchCriteria = ["UNSEEN"];
+    const fetchOptions = {
+      bodies: [""],
+      markSeen: false
+    };
+
+    const messages = await connection.search(searchCriteria, fetchOptions);
+
+    let emails = [];
+
+    for (let item of messages) {
+      let all = item.parts.find(part => part.which === "");
+      let parsed = await simpleParser(all.body);
+
+      emails.push({
+        from: parsed.from?.text || "",
+        subject: parsed.subject || "",
+        date: parsed.date || "",
+        text: parsed.text || ""
+      });
+    }
+
+    res.json(emails);
+
+  } catch (err) {
+    console.error("IMAP ERROR:", err);
+    res.status(500).json({ error: "IMAP connection failed" });
+  }
+});
+
+// ===== START SERVER =====
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
-  console.log("Advanced server running on port " + PORT);
+  console.log("Server running on port " + PORT);
 });
