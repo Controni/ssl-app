@@ -13,7 +13,7 @@ app.use(express.json());
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
-  res.send("SSL ADVANCED SERVER OK");
+  res.send("SSL AUTO CRM ACTIVE");
 });
 
 // ===== LOGIN =====
@@ -21,76 +21,53 @@ app.post("/login", (req, res) => {
   res.json({ success: true });
 });
 
-// ===== LEADS =====
-const leads = require("./leads.json");
-
-app.get("/leads", (req, res) => {
-  res.json(leads);
-});
-
-// ===== EMAIL ENGINE =====
+// ===== EMAIL GENERATOR =====
 app.post("/generate-email", (req, res) => {
 
   const { company, market, stage, next_action, alerts, score, status } = req.body;
 
   let email = `Dear ${company} Team,\n\n`;
 
-  let urgency = false;
-  let competitive = false;
+  let urgency = score >= 70 || (status && status.includes("➡️ NOI"));
+  let competitive = alerts && alerts.some(a => a.includes("Exclusivity"));
 
-  if (alerts && alerts.some(a => a.includes("Exclusivity"))) {
-    competitive = true;
-  }
-
-  if (score >= 70) urgency = true;
-  if (status && status.includes("➡️ NOI")) urgency = true;
-
-  // NEGOTIATION
   if (stage === "NEGOTIATION") {
     email += `Following our recent discussions regarding the ${market} market, we are now moving into the operational phase of partner selection.\n\n`;
+
+    if (next_action === "Send price list") {
+      email += `Please find attached our preliminary pricing structure for your review.\n\n`;
+    }
+
+    if (next_action === "Schedule call") {
+      email += `I would suggest scheduling a short call to align on strategy, positioning and regulatory aspects.\n\n`;
+    }
 
     if (next_action === "Request forecast") {
       email += `To proceed with the evaluation, we kindly ask you to share your expected forecast volumes and initial order planning.\n\n`;
     }
 
-    email += `This will allow us to assess alignment in terms of capacity allocation, pricing structure, and market positioning.\n\n`;
-
     if (competitive) {
-      email += `Please note that we are currently evaluating multiple potential partners for this market, and timing will be a key factor in defining the final structure.\n\n`;
+      email += `We are currently evaluating multiple partners for this market, and timing will be an important factor.\n\n`;
     }
 
     if (urgency) {
-      email += `We would appreciate receiving your feedback in the coming days to proceed efficiently.\n\n`;
+      email += `We would appreciate your feedback in the coming days to proceed efficiently.\n\n`;
     }
   }
 
-  // FIRST CONTACT
   else if (stage === "FIRST CONTACT") {
     email += `It was a pleasure connecting with you.\n\n`;
-    email += `Swiss Scientific Lab is a Swiss-based company specialized in high-end aesthetic medical solutions, currently expanding into selected strategic markets such as ${market}.\n\n`;
-    email += `Given your positioning, we believe there could be strong potential for a structured collaboration.\n\n`;
-    email += `I would be glad to present our portfolio and explore how we could build a differentiated positioning together.\n\n`;
+    email += `Swiss Scientific Lab is a Swiss-based company specialized in premium aesthetic medical solutions.\n\n`;
+    email += `We would be glad to introduce our portfolio and explore a potential collaboration in the ${market} market.\n\n`;
   }
 
-  // FOLLOW-UP
   else if (stage === "FOLLOW-UP") {
-    email += `I just wanted to follow up regarding our previous communication.\n\n`;
-
-    if (urgency) {
-      email += `As we are currently progressing with planning activities, your feedback would be important to align next steps.\n\n`;
-    } else {
-      email += `Please let me know if you had the opportunity to review the information shared.\n\n`;
-    }
+    email += `I just wanted to follow up on our previous discussion.\n\n`;
+    email += `Please let me know if you had the opportunity to review the information shared.\n\n`;
   }
 
-  // DEFAULT
-  else {
-    email += `We would be pleased to explore a potential collaboration with your company in the ${market} market.\n\n`;
-  }
+  email += `I remain available for a short call to align on next steps.\n\n`;
 
-  email += `I remain available for a short call to align on the next steps.\n\n`;
-
-  // SIGNATURE
   email += `Best regards,\n`;
   email += `Swiss Scientific Lab\n\n`;
   email += `Giancarlo Bonagura\n`;
@@ -107,8 +84,8 @@ app.post("/generate-email", (req, res) => {
   res.json({ email });
 });
 
-// ===== IMAP FETCH EMAILS (FIX TLS) =====
-app.get("/fetch-emails", async (req, res) => {
+// ===== AUTO CRM ENGINE =====
+app.get("/auto-leads", async (req, res) => {
 
   const config = {
     imap: {
@@ -117,40 +94,103 @@ app.get("/fetch-emails", async (req, res) => {
       host: "mail.swissscientificlab.ch",
       port: 993,
       tls: true,
-      authTimeout: 10000,
-      tlsOptions: {
-        rejectUnauthorized: false
-      }
+      tlsOptions: { rejectUnauthorized: false }
     }
   };
 
   try {
     const connection = await imaps.connect(config);
-    await connection.openBox("INBOX");
+    const boxes = await connection.getBoxes();
 
-    const messages = await connection.search(["UNSEEN"], {
-      bodies: [""],
-      markSeen: false
-    });
+    let leads = [];
 
-    let emails = [];
+    async function scanBoxes(boxes, path = "") {
+      for (let box in boxes) {
+        let fullName = path ? `${path}${box}` : box;
 
-    for (let item of messages) {
-      let all = item.parts.find(part => part.which === "");
-      let parsed = await simpleParser(all.body);
+        if (fullName.includes(" - ")) {
 
-      emails.push({
-        from: parsed.from?.text || "",
-        subject: parsed.subject || "",
-        date: parsed.date || "",
-        text: parsed.text || ""
-      });
+          let parts = fullName.split(" - ");
+          let market = parts[0]?.trim();
+          let company = parts[1]?.trim();
+
+          try {
+            await connection.openBox(fullName);
+
+            const messages = await connection.search(["ALL"], {
+              bodies: [""],
+              struct: true
+            });
+
+            if (messages.length === 0) continue;
+
+            let last = messages[messages.length - 1];
+            let part = last.parts.find(p => p.which === "");
+            let parsed = await simpleParser(part.body);
+
+            let text = (parsed.text || "").toLowerCase();
+
+            let stage = "FIRST CONTACT";
+            let next_action = "Send introduction email";
+            let status = "➡️ NOI";
+            let score = 50;
+            let alerts = [];
+
+            if (text.includes("price") || text.includes("pricing")) {
+              stage = "NEGOTIATION";
+              next_action = "Send price list";
+              score = 75;
+            }
+
+            if (text.includes("call") || text.includes("meeting")) {
+              stage = "NEGOTIATION";
+              next_action = "Schedule call";
+              score = 80;
+            }
+
+            if (text.includes("thank you") || text.includes("pleasure")) {
+              stage = "FOLLOW-UP";
+              next_action = "Follow-up email";
+              status = "⏳ LORO";
+            }
+
+            if (text.includes("forecast")) {
+              next_action = "Request forecast";
+            }
+
+            if (text.includes("exclusive")) {
+              alerts.push("⚠️ Exclusivity risk");
+            }
+
+            leads.push({
+              company,
+              market,
+              stage,
+              next_action,
+              status,
+              score,
+              alerts,
+              last_email: parsed.subject || "",
+              date: parsed.date || ""
+            });
+
+          } catch (e) {
+            console.log("Skip:", fullName);
+          }
+        }
+
+        if (boxes[box].children) {
+          await scanBoxes(boxes[box].children, fullName + ".");
+        }
+      }
     }
 
-    res.json(emails);
+    await scanBoxes(boxes);
+
+    res.json(leads);
 
   } catch (err) {
-    console.error("IMAP FULL ERROR:", err);
+    console.error("AUTO CRM ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
