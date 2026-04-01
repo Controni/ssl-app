@@ -19,7 +19,7 @@ app.use(express.json());
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
-  res.send("SSL AI CRM ACTIVE");
+  res.send("SSL AI CRM DEBUG MODE");
 });
 
 // ===== LOGIN =====
@@ -27,10 +27,14 @@ app.post("/login", (req, res) => {
   res.json({ success: true });
 });
 
-// ===== AI ANALYSIS =====
+// ===== AI ANALYSIS (DEBUG) =====
 async function analyzeEmailAI(text){
 
   try {
+
+    console.log("------ AI INPUT START ------");
+    console.log(text.substring(0, 500));
+    console.log("------ AI INPUT END ------");
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -38,28 +42,22 @@ async function analyzeEmailAI(text){
         {
           role: "system",
           content: `
-You are a senior B2B sales strategist for a medical aesthetics company.
+You are a senior B2B sales strategist.
 
-Your job is to understand REAL commercial intent from email conversations.
+Classify business emails:
 
-Classification rules:
-
-- NDA, forecast, pricing, registration → NEGOTIATION
-- Active discussion → NEGOTIATION
-- Waiting reply → FOLLOW-UP
-- First intro only → FIRST CONTACT
-
-IMPORTANT:
-Do NOT classify everything as FIRST CONTACT.
+- NDA, pricing, forecast → NEGOTIATION
+- Follow-up → FOLLOW-UP
+- Intro → FIRST CONTACT
 
 Return ONLY JSON:
 
 {
   "stage": "FIRST CONTACT | NEGOTIATION | FOLLOW-UP",
-  "next_action": "very specific action",
+  "next_action": "action",
   "status": "➡️ NOI | ⏳ LORO",
-  "score": number (0-100),
-  "alerts": ["risks if any"]
+  "score": number,
+  "alerts": []
 }
 `
         },
@@ -71,76 +69,28 @@ Return ONLY JSON:
       temperature: 0.2
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    const raw = response.choices[0].message.content;
+
+    console.log("🔥 AI RAW RESPONSE:");
+    console.log(raw);
+
+    let parsed;
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      console.log("❌ JSON PARSE ERROR:", err.message);
+      return null;
+    }
+
+    return parsed;
 
   } catch (e) {
-    console.log("AI ERROR:", e.message);
+    console.log("🔥 AI FULL ERROR:");
+    console.log(e);
     return null;
   }
 }
-
-// ===== EMAIL GENERATOR =====
-app.post("/generate-email", (req, res) => {
-
-  const { company, market, stage, next_action, alerts, score, status } = req.body;
-
-  let email = `Dear ${company} Team,\n\n`;
-
-  let urgency = score >= 70 || (status && status.includes("➡️ NOI"));
-  let competitive = alerts && alerts.some(a => a.includes("Exclusivity"));
-
-  if (stage === "NEGOTIATION") {
-    email += `Following our recent discussions regarding the ${market} market, we are now moving into the operational phase of partner selection.\n\n`;
-
-    if (next_action === "Send price list") {
-      email += `Please find attached our preliminary pricing structure for your review.\n\n`;
-    }
-
-    if (next_action === "Schedule call") {
-      email += `I would suggest scheduling a short call to align on strategy, positioning and regulatory aspects.\n\n`;
-    }
-
-    if (next_action === "Request forecast") {
-      email += `To proceed with the evaluation, we kindly ask you to share your expected forecast volumes and initial order planning.\n\n`;
-    }
-
-    if (competitive) {
-      email += `We are currently evaluating multiple partners for this market, and timing will be an important factor.\n\n`;
-    }
-
-    if (urgency) {
-      email += `We would appreciate your feedback in the coming days to proceed efficiently.\n\n`;
-    }
-  }
-
-  else if (stage === "FIRST CONTACT") {
-    email += `It was a pleasure connecting with you.\n\n`;
-    email += `Swiss Scientific Lab is a Swiss-based company specialized in premium aesthetic medical solutions.\n\n`;
-    email += `We would be glad to introduce our portfolio and explore a potential collaboration in the ${market} market.\n\n`;
-  }
-
-  else if (stage === "FOLLOW-UP") {
-    email += `I just wanted to follow up on our previous discussion.\n\n`;
-    email += `Please let me know if you had the opportunity to review the information shared.\n\n`;
-  }
-
-  email += `I remain available for a short call to align on next steps.\n\n`;
-
-  email += `Best regards,\n`;
-  email += `Swiss Scientific Lab\n\n`;
-  email += `Giancarlo Bonagura\n`;
-  email += `Key Account Manager\n\n`;
-  email += `SWISS SCIENTIFIC LAB GmbH\n`;
-  email += `Viale Carlo Cattaneo, 21\n`;
-  email += `6900 Lugano – Switzerland\n\n`;
-  email += `Telephone +41 76 510 06 29\n`;
-  email += `Personal +39 331 800 4630\n`;
-  email += `Website https://swissscientificlab.ch\n`;
-  email += `Instagram @swiss_scientific_lab\n`;
-  email += `Facebook Swiss Scientific Lab GmbH`;
-
-  res.json({ email });
-});
 
 // ===== AUTO CRM =====
 app.get("/auto-leads", async (req, res) => {
@@ -187,7 +137,7 @@ app.get("/auto-leads", async (req, res) => {
             let part = last.parts.find(p => p.which === "");
             let parsed = await simpleParser(part.body);
 
-            // ===== FIX CONTEXT AI =====
+            // ===== CONTEXT =====
             let subject = parsed.subject || "";
             let body = (parsed.text || "").slice(0, 1500);
 
@@ -198,6 +148,7 @@ EMAIL:
 ${body}
 `;
 
+            // ===== AI =====
             let ai = await analyzeEmailAI(fullContext);
 
             let stage = ai?.stage || "FIRST CONTACT";
