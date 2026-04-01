@@ -28,7 +28,7 @@ app.get("/leads", (req, res) => {
   res.json(leads);
 });
 
-// ===== EMAIL GENERATOR =====
+// ===== EMAIL ENGINE =====
 app.post("/generate-email", (req, res) => {
 
   const { company, market, stage, next_action, alerts, score, status } = req.body;
@@ -107,7 +107,7 @@ app.post("/generate-email", (req, res) => {
   res.json({ email });
 });
 
-// ===== IMAP FETCH EMAILS =====
+// ===== IMAP FETCH EMAILS (FIX TLS) =====
 app.get("/fetch-emails", async (req, res) => {
 
   const config = {
@@ -117,7 +117,10 @@ app.get("/fetch-emails", async (req, res) => {
       host: "mail.swissscientificlab.ch",
       port: 993,
       tls: true,
-      authTimeout: 5000
+      authTimeout: 10000,
+      tlsOptions: {
+        rejectUnauthorized: false
+      }
     }
   };
 
@@ -125,13 +128,10 @@ app.get("/fetch-emails", async (req, res) => {
     const connection = await imaps.connect(config);
     await connection.openBox("INBOX");
 
-    const searchCriteria = ["UNSEEN"];
-    const fetchOptions = {
+    const messages = await connection.search(["UNSEEN"], {
       bodies: [""],
       markSeen: false
-    };
-
-    const messages = await connection.search(searchCriteria, fetchOptions);
+    });
 
     let emails = [];
 
@@ -150,12 +150,12 @@ app.get("/fetch-emails", async (req, res) => {
     res.json(emails);
 
   } catch (err) {
-    console.error("IMAP ERROR:", err);
-    res.status(500).json({ error: "IMAP connection failed" });
+    console.error("IMAP FULL ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ===== START SERVER =====
+// ===== START =====
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
