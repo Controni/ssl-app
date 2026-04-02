@@ -4,14 +4,8 @@ require("dotenv").config();
 
 const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
-const OpenAI = require("openai");
 
 const app = express();
-
-// ===== OPENAI =====
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 // ===== MIDDLEWARE =====
 app.use(cors({ origin: "*" }));
@@ -19,7 +13,7 @@ app.use(express.json());
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
-  res.send("SSL AI CRM DEBUG MODE");
+  res.send("SSL CRM LIVE");
 });
 
 // ===== LOGIN =====
@@ -27,72 +21,7 @@ app.post("/login", (req, res) => {
   res.json({ success: true });
 });
 
-// ===== AI ANALYSIS (DEBUG) =====
-async function analyzeEmailAI(text){
-
-  try {
-
-    console.log("------ AI INPUT START ------");
-    console.log(text.substring(0, 500));
-    console.log("------ AI INPUT END ------");
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are a senior B2B sales strategist.
-
-Classify business emails:
-
-- NDA, pricing, forecast → NEGOTIATION
-- Follow-up → FOLLOW-UP
-- Intro → FIRST CONTACT
-
-Return ONLY JSON:
-
-{
-  "stage": "FIRST CONTACT | NEGOTIATION | FOLLOW-UP",
-  "next_action": "action",
-  "status": "➡️ NOI | ⏳ LORO",
-  "score": number,
-  "alerts": []
-}
-`
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      temperature: 0.2
-    });
-
-    const raw = response.choices[0].message.content;
-
-    console.log("🔥 AI RAW RESPONSE:");
-    console.log(raw);
-
-    let parsed;
-
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      console.log("❌ JSON PARSE ERROR:", err.message);
-      return null;
-    }
-
-    return parsed;
-
-  } catch (e) {
-    console.log("🔥 AI FULL ERROR:");
-    console.log(e);
-    return null;
-  }
-}
-
-// ===== AUTO CRM =====
+// ===== AUTO CRM (SMART VERSION) =====
 app.get("/auto-leads", async (req, res) => {
 
   const config = {
@@ -117,45 +46,102 @@ app.get("/auto-leads", async (req, res) => {
 
         let fullName = path ? `${path}${box}` : box;
 
+        // 👉 SOLO cartelle con clienti
         if (fullName.includes(" - ")) {
 
           let parts = fullName.split(" - ");
-          let market = parts[0]?.trim();
+          let market = parts[0]?.replace("INBOX.Archive.", "").trim();
           let company = parts[1]?.trim();
 
           try {
             await connection.openBox(fullName);
 
-            const messages = await connection.search(["ALL"], {
-              bodies: [""],
-              struct: true
-            });
+            // 👉 SOLO ultimi 7 giorni
+            const messages = await connection.search(
+              ['SINCE', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)],
+              {
+                bodies: [""],
+                struct: true
+              }
+            );
 
-            if (messages.length === 0) continue;
+            if (!messages || messages.length === 0) continue;
 
-            let last = messages[messages.length - 1];
+            // 👉 prendi email più rilevante
+            let last = messages.reverse().find(m => {
+              let part = m.parts.find(p => p.which === "");
+              return part && part.body && part.body.length > 50;
+            }) || messages[messages.length - 1];
+
             let part = last.parts.find(p => p.which === "");
             let parsed = await simpleParser(part.body);
 
-            // ===== CONTEXT =====
             let subject = parsed.subject || "";
-            let body = (parsed.text || "").slice(0, 1500);
+            let text = (parsed.text || "").toLowerCase();
 
-            let fullContext = `
-SUBJECT: ${subject}
+            // ===== LOGICA INTELLIGENTE (NO AI) =====
 
-EMAIL:
-${body}
-`;
+            let stage = "FIRST CONTACT";
+            let next_action = "Send introduction email";
+            let status = "➡️ NOI";
+            let score = 50;
+            let alerts = [];
 
-            // ===== AI =====
-            let ai = await analyzeEmailAI(fullContext);
+            if (
+              text.includes("nda") ||
+              text.includes("agreement") ||
+              subject.toLowerCase().includes("nda")
+            ) {
+              stage = "NEGOTIATION";
+              next_action = "Follow NDA completion";
+              score = 75;
+            }
 
-            let stage = ai?.stage || "FIRST CONTACT";
-            let next_action = ai?.next_action || "Send introduction email";
-            let status = ai?.status || "➡️ NOI";
-            let score = ai?.score || 50;
-            let alerts = ai?.alerts || [];
+            if (
+              text.includes("forecast") ||
+              subject.toLowerCase().includes("forecast")
+            ) {
+              stage = "NEGOTIATION";
+              next_action = "Review forecast & propose order";
+              score = 85;
+            }
+
+            if (
+              text.includes("price") ||
+              text.includes("pricing") ||
+              text.includes("quotation")
+            ) {
+              stage = "NEGOTIATION";
+              next_action = "Send pricing / negotiate";
+              score = 80;
+            }
+
+            if (
+              text.includes("call") ||
+              text.includes("meeting")
+            ) {
+              stage = "NEGOTIATION";
+              next_action = "Schedule call";
+              score = 80;
+            }
+
+            if (
+              text.includes("thank you") ||
+              text.includes("please let me know")
+            ) {
+              stage = "FOLLOW-UP";
+              next_action = "Follow-up email";
+              status = "⏳ LORO";
+              score = 60;
+            }
+
+            if (
+              text.includes("exclusive") ||
+              text.includes("exclusivity")
+            ) {
+              alerts.push("⚠️ Exclusivity risk");
+              score += 5;
+            }
 
             leads.push({
               company,
@@ -165,7 +151,7 @@ ${body}
               status,
               score,
               alerts,
-              last_email: parsed.subject || "",
+              last_email: subject,
               date: parsed.date || ""
             });
 
@@ -174,6 +160,7 @@ ${body}
           }
         }
 
+        // recursion subfolders
         if (boxes[box].children) {
           await scanBoxes(boxes[box].children, fullName + ".");
         }
